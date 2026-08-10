@@ -26,6 +26,20 @@ interface TeamGridProps {
   className?: string;
 }
 
+/**
+ * Weiche Kante statt harter Schnittkante an den beiden Enden der Reihe.
+ *
+ * Die Ausblendstrecke ist genau so breit wie der Innenabstand der Leiste
+ * (`--rand`): Im Ruhezustand steht die erste Karte damit voll da, und nur was
+ * aus der Reihe heraus scrollt, verliert sich.
+ *
+ * Gleichzeitig macht die Maske das Beschneiden erträglich, das `overflow-x`
+ * unvermeidlich mitbringt — der goldene Schein einer angetippten Karte läuft
+ * am Rand nicht mehr gegen eine Kante, sondern aus.
+ */
+const RAND_WEICH =
+  "[--rand:1.5rem] [mask-image:linear-gradient(to_right,transparent,#000_var(--rand),#000_calc(100%-var(--rand)),transparent)] sm:[--rand:2rem] lg:[--rand:2.5rem]";
+
 // Real people are the strongest trust anchor (DESIGN.md §13). Frosted-glass
 // cards with a portrait, role and responsibilities — each reveals as it enters
 // the viewport and lifts gently on hover.
@@ -50,7 +64,16 @@ export function TeamGrid({
               buendig unter der Ueberschrift beginnt. Rechts schaut immer die
               naechste Karte hervor — das sagt „hier geht es weiter", ohne dass
               ein Hinweis noetig waere. */}
-          <ul className="-mx-6 flex snap-x snap-mandatory scroll-pl-6 [scrollbar-width:none] gap-4 overflow-x-auto px-6 pb-2 sm:-mx-8 sm:scroll-pl-8 sm:gap-6 sm:px-8 lg:-mx-10 lg:scroll-pl-10 lg:gap-8 lg:px-10 [&::-webkit-scrollbar]:hidden">
+          {/* pt/pb sind kein Luftholen, sondern Platz für den Schein beim
+              Überfahren: Der Schatten reicht 40 px unter die Karte, die Karte
+              hebt sich dabei 4 px an. Ohne diesen Platz schneidet `overflow-x`
+              beides ab. */}
+          <ul
+            className={cn(
+              "-mx-6 flex snap-x snap-mandatory scroll-pl-6 [scrollbar-width:none] gap-4 overflow-x-auto px-6 pt-1 pb-10 sm:-mx-8 sm:scroll-pl-8 sm:gap-6 sm:px-8 lg:-mx-10 lg:scroll-pl-10 lg:gap-8 lg:px-10 [&::-webkit-scrollbar]:hidden",
+              RAND_WEICH,
+            )}
+          >
             {members.map((member, index) => (
               <li
                 key={`${member.name}-${index}`}
