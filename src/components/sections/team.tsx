@@ -35,6 +35,11 @@ export function TeamGrid({
   background,
   className,
 }: TeamGridProps) {
+  // With a three-column grid, a member count like 4 or 7 leaves a single card
+  // stranded on the left of the last row. Centering it keeps the block calm.
+  // Only from `lg` — below that the grid is one or two columns wide.
+  const centerLastCard = members.length > 1 && members.length % 3 === 1;
+
   return (
     <Section background={background} className={className}>
       <Container>
@@ -42,7 +47,15 @@ export function TeamGrid({
         <FadeInStagger className={cn(intro && "mt-14 sm:mt-20")}>
           <ul className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 lg:gap-8">
             {members.map((member, index) => (
-              <li key={`${member.name}-${index}`} className="h-full">
+              <li
+                key={`${member.name}-${index}`}
+                className={cn(
+                  "h-full",
+                  centerLastCard &&
+                    index === members.length - 1 &&
+                    "lg:col-start-2",
+                )}
+              >
                 <FadeIn className="h-full">
                   <article className="group flex h-full flex-col gap-5 rounded-2xl border border-border/60 bg-[var(--surface)] p-6 backdrop-blur-[var(--glass-blur)] transition duration-300 ease-out hover:-translate-y-1 hover:border-brand/40 hover:shadow-[0_28px_80px_-28px_color-mix(in_oklch,var(--brand)_45%,transparent)] motion-reduce:transition-none motion-reduce:hover:translate-y-0 sm:p-7">
                     <div className="flex items-center gap-4">

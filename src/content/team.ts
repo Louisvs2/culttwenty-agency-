@@ -9,10 +9,10 @@ export const team: { intro: SectionIntro; members: TeamMember[] } = {
     eyebrow: "Team",
     title: "Die Menschen hinter CultTwenty",
     // Der Zusatz löst einen Widerspruch auf: Im Impressum stehen zwei
-    // Gesellschafter, auf dieser Seite drei Gesichter — wer beides liest,
+    // Gesellschafter, auf dieser Seite vier Gesichter — wer beides liest,
     // fragt sich sonst, welche Angabe stimmt. Beide stimmen.
     subtitle:
-      "Ein kleines, eingespieltes Team aus Design, Entwicklung und Betreuung — damit Ihre Website aus einer Hand entsteht. Gesellschafter der CultTwenty GbR sind Louis Reinecke und Noel David Ritter; im Tagesgeschäft arbeiten Sie mit den hier vorgestellten Personen zusammen.",
+      "Ein kleines, eingespieltes Team aus Beratung, Design, Entwicklung und Betreuung — damit Ihre Website aus einer Hand entsteht. Gesellschafter der CultTwenty GbR sind Louis Reinecke und Noel David Ritter; im Tagesgeschäft arbeiten Sie mit den hier vorgestellten Personen zusammen.",
   },
   members: [
     {
@@ -55,6 +55,20 @@ export const team: { intro: SectionIntro; members: TeamMember[] } = {
         "Projektkoordination",
         "Kundenbetreuung",
         "Planung & Ablauf",
+      ],
+    },
+    {
+      name: "Dannay Tekle",
+      role: "Vertrieb & Partnernetz",
+      // Ohne `image` zeigt die Karte den neutralen Platzhalter statt eines
+      // kaputten Bildes. Sobald public/images/team/dannay.jpg im Repo liegt,
+      // kommt hier derselbe Block wie oben dazu — klein geschrieben, denn der
+      // Strato-Server unterscheidet Groß- und Kleinschreibung.
+      bio: "Dannay ist meist die erste Person, mit der Sie sprechen — noch bevor irgendetwas gebaut wird. Er hört zu, was Sie brauchen, und betreut die Partner, die bei Ihnen vor Ort unterwegs sind.",
+      responsibilities: [
+        "Erstgespräch & Beratung",
+        "Partnerbetreuung",
+        "Angebote",
       ],
     },
   ],
