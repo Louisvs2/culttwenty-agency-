@@ -60,10 +60,10 @@ export const team: { intro: SectionIntro; members: TeamMember[] } = {
     {
       name: "Dannay Tekle",
       role: "Vertrieb & Partnernetz",
-      // Ohne `image` zeigt die Karte den neutralen Platzhalter statt eines
-      // kaputten Bildes. Sobald public/images/team/dannay.jpg im Repo liegt,
-      // kommt hier derselbe Block wie oben dazu — klein geschrieben, denn der
-      // Strato-Server unterscheidet Groß- und Kleinschreibung.
+      image: {
+        src: "/images/team/dannay.jpg",
+        alt: "Porträt von Dannay Tekle, Vertrieb & Partnernetz bei CultTwenty",
+      },
       bio: "Dannay ist meist die erste Person, mit der Sie sprechen — noch bevor irgendetwas gebaut wird. Er hört zu, was Sie brauchen, und betreut die Partner, die bei Ihnen vor Ort unterwegs sind.",
       responsibilities: [
         "Erstgespräch & Beratung",
