@@ -1,5 +1,3 @@
-import Image from "next/image";
-
 import { Container } from "@/components/layout/container";
 import { Section, type SectionBackground } from "@/components/layout/section";
 import { FadeIn } from "@/components/motion/fade-in";
@@ -40,12 +38,19 @@ export function LogoCloud({
           >
             {logos.map((logo) => (
               <li key={logo.alt}>
-                <Image
-                  src={logo.src}
+                {/* Absichtlich ein normales <img>, kein next/image: die
+                    Dateien kommen roh aus public/images/clients/ (der Kunde
+                    legt sie selbst ab), ohne bekannte Breite/Höhe im Voraus.
+                    grayscale+invert vereinheitlicht jedes Logo unabhängig von
+                    seiner Originalfarbe zu Weiß, wie in der Referenz. */}
+                {/* eslint-disable-next-line @next/next/no-img-element --
+                    next/image braucht Breite/Höhe im Voraus; auf dieser
+                    statisch exportierten Seite (images.unoptimized: true)
+                    bringt es hier ohnehin keine echte Optimierung. */}
+                <img
+                  src={typeof logo.src === "string" ? logo.src : logo.src.src}
                   alt={logo.alt}
-                  width={logo.width}
-                  height={logo.height}
-                  className="h-7 w-auto opacity-60"
+                  className="h-7 w-auto opacity-60 brightness-0 grayscale invert"
                 />
               </li>
             ))}

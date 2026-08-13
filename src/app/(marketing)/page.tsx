@@ -3,11 +3,13 @@ import { FAQ } from "@/components/sections/faq";
 import { FeatureGrid, ServiceCards } from "@/components/sections/features";
 import { Gallery } from "@/components/sections/gallery";
 import { HeroCentered } from "@/components/sections/hero";
+import { LogoCloud } from "@/components/sections/logo-cloud";
 import { ProcessSteps } from "@/components/sections/process";
 import { TeamGrid } from "@/components/sections/team";
 import { home } from "@/content/home";
 import { team } from "@/content/team";
 import { work } from "@/content/work";
+import { getClientLogos } from "@/lib/client-logos";
 import { createMetadata } from "@/lib/metadata";
 import { faqSchema } from "@/lib/schema";
 import { JsonLd } from "@/components/shared/json-ld";
@@ -30,9 +32,17 @@ export const metadata = createMetadata({
 // CultTwenty homepage: promise → offer → how it works → who you'll talk to →
 // objections → action. No invented proof (stats/testimonials) for a young firm.
 export default function HomePage() {
+  const clientLogos = getClientLogos();
+
   return (
     <>
       <HeroCentered {...home.hero} />
+      {/* Sozialer Beweis direkt nach dem Hero (DESIGN.md §14) — aber nur,
+          wenn echte Logos in public/images/clients/ liegen. Leerer Ordner =
+          kein Abschnitt, statt eine leere Lücke zu zeigen. */}
+      {clientLogos.length > 0 && (
+        <LogoCloud label={home.clients.label} logos={clientLogos} />
+      )}
       {/* Zuerst die Einordnung: Wer die Seite öffnet, will als Erstes wissen,
           ob er überhaupt gemeint ist. */}
       <FeatureGrid

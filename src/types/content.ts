@@ -31,12 +31,12 @@ export interface SectionImage {
   caption?: string;
 }
 
-/** Logo with intrinsic dimensions (rendered at fixed height, no layout shift). */
+/** Logo, rendered at a fixed CSS height with the browser keeping the aspect
+ *  ratio — intrinsic dimensions aren't known ahead of time since these come
+ *  from files dropped into public/images/clients/ by the client. */
 export interface Logo {
   src: string | StaticImageData;
   alt: string;
-  width: number;
-  height: number;
 }
 
 /** A framed image that fills its aspect box (object-cover). */

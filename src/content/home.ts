@@ -1,5 +1,6 @@
 // Homepage content for CultTwenty. Honest copy for a young agency — no
-// invented numbers, testimonials or client logos.
+// invented numbers or testimonials. Client logos (below) are real when
+// present and hidden entirely when the folder is empty (DESIGN.md §13).
 
 import type { Service } from "@/components/sections/features";
 import type { FaqItem } from "@/components/sections/faq";
@@ -14,6 +15,7 @@ interface HomeContent {
     subtitle: string;
     actions: { primary: Action; secondary: Action };
   };
+  clients: { label: string };
   services: { intro: SectionIntro; items: Service[] };
   process: { intro: SectionIntro; steps: ProcessStep[] };
   faq: { intro: SectionIntro; items: FaqItem[] };
@@ -32,6 +34,9 @@ export const home: HomeContent = {
       primary: { label: "Kostenlos ansehen", href: "/kontakt" },
       secondary: { label: "Leistungen ansehen", href: "/leistungen" },
     },
+  },
+  clients: {
+    label: "Marken, mit denen wir zusammenarbeiten",
   },
   services: {
     intro: {
