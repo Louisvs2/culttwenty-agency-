@@ -41,12 +41,17 @@ export const home: HomeContent = {
       subtitle:
         "Alles, was eine Website heute braucht — in einem Rundum-sorglos-Paket, ohne dass Sie sich um Technik kümmern müssen.",
     },
-    items: services.map((service) => ({
-      icon: service.icon,
-      title: service.title,
-      description: service.excerpt,
-      href: `/leistungen/${service.slug}`,
-    })),
+    // Nur die Website-Leistungen — CultTwenty produziert auch Bewegtbild und
+    // 3D-Design (siehe /leistungen), aber die Startseite bleibt fokussiert
+    // auf das Website-Geschäft.
+    items: services
+      .filter((service) => service.category === "website")
+      .map((service) => ({
+        icon: service.icon,
+        title: service.title,
+        description: service.excerpt,
+        href: `/leistungen/${service.slug}`,
+      })),
   },
   process: {
     intro: {
