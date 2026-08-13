@@ -7,7 +7,6 @@ import type { Action } from "@/types/content";
 
 interface ClientsContent {
   hero: { eyebrow: string; title: string; subtitle: string };
-  logoCloud: { label: string };
   cta: { title: string; subtitle: string; action: Action; note: string };
 }
 
@@ -17,9 +16,6 @@ export const clients: ClientsContent = {
     title: "Marken, die uns vertrauen.",
     subtitle:
       "Ein Ausschnitt der Unternehmen, für die wir Websites gestalten und betreiben.",
-  },
-  logoCloud: {
-    label: "Marken, mit denen wir zusammenarbeiten",
   },
   cta: {
     title: "Auch Ihre Website?",

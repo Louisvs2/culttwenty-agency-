@@ -16,11 +16,14 @@ export default function KundenPage() {
 
   return (
     <>
-      <HeroStatement {...clients.hero} />
+      {/* Kein Abstand zwischen Titel und Logo-Wolke — sie schwirrt direkt
+          unter dem großen Text, nicht als eigener, abgesetzter Bereich
+          weiter unten. */}
+      <HeroStatement {...clients.hero} className="pb-0 sm:pb-0 lg:pb-0" />
       {/* Kein Platzhalter, solange der Ordner leer ist (DESIGN.md §13) —
           dann bleibt die Seite bei Hero + CTA. */}
       {clientLogos.length > 0 && (
-        <LogoCloud label={clients.logoCloud.label} logos={clientLogos} />
+        <LogoCloud logos={clientLogos} className="pt-0 sm:pt-0 lg:pt-0" />
       )}
       <CTA {...clients.cta} />
     </>

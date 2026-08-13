@@ -9,8 +9,6 @@ import { cn } from "@/lib/utils";
 import type { Logo } from "@/types/content";
 
 interface LogoCloudProps {
-  /** Quiet one-liner above the logos, e.g. a trust statement. */
-  label?: string;
   logos: Logo[];
   background?: SectionBackground;
   className?: string;
@@ -29,76 +27,98 @@ const CURSOR_RADIUS = 130; // px, how far the cursor's push reaches
 const CURSOR_STRENGTH = 2200; // px/s² at the cursor's center
 const BOUNDARY_MARGIN = 30; // px, soft push-back zone from the walls
 const BOUNDARY_STRENGTH = 1400; // px/s² once inside the margin
-// Jedes Logo bekommt einen "Zuhause"-Punkt auf einem Raster über die ganze
-// Fläche und wird sanft dorthin zurückgezogen — ohne das würden wenige
-// Logos in einer Ecke zusammentreiben statt die Fläche zu füllen. Schwach
-// genug, dass Wander/Cursor/Abstoßung lokal trotzdem den Ton angeben.
-const HOME_STRENGTH = 0.8; // px/s² pro px Abstand vom Zuhause-Punkt
-
-/** Größer bei wenigen Logos, kompakter bei vielen — füllt die Fläche in
- *  beiden Fällen angemessen statt bei fester Größe leer oder überfüllt zu
- *  wirken. Responsive Tailwind-Klassen statt eines festen Pixelwerts: bei
- *  schmaler Breite (Handy) braucht dieselbe Logo-Anzahl spürbar weniger
- *  Höhe, sonst würden breite Wortmarken bei wenig Platz pro Spalte
- *  überlappen, obwohl die Kollisionsprüfung sie eigentlich trennt. */
-function logoHeightClassFor(count: number) {
-  if (count <= 4) return "h-8 sm:h-11 lg:h-14";
-  if (count <= 8) return "h-6 sm:h-9 lg:h-11";
-  if (count <= 14) return "h-5 sm:h-7 lg:h-9";
-  return "h-4 sm:h-6 lg:h-7";
-}
 
 interface Body {
   x: number;
   y: number;
   vx: number;
   vy: number;
-  homeX: number;
-  homeY: number;
+  /** 0–1, gewählt einmal pro Logo — legt seine individuelle Größe innerhalb
+   *  des aktuellen Größenbereichs fest (siehe sizeRangeFor). */
+  sizeFraction: number;
   wanderAngle: number;
   halfW: number;
   halfH: number;
 }
 
-/** Rasterpunkte über die volle Breite/Höhe verteilt, Spaltenzahl passend
- *  zum Seitenverhältnis der Fläche — das ist zugleich der Startpunkt jedes
- *  Logos und sein "Zuhause", zu dem die Home-Kraft es zurückzieht. */
-function computeHomePositions(count: number, width: number, height: number) {
-  const aspect = width / Math.max(height, 1);
-  const cols = Math.max(1, Math.round(Math.sqrt(count * aspect)));
-  const rows = Math.max(1, Math.ceil(count / cols));
-  return Array.from({ length: count }, (_, i) => {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    return {
-      x: ((col + 0.5) / cols) * width,
-      y: ((row + 0.5) / rows) * height,
-    };
+/** Größenbereich, aus dem jedes Logo seine eigene, zufällige Größe zieht.
+ *  Insgesamt kleiner bei vielen Logos, größer bei wenigen — und zusätzlich
+ *  an die tatsächliche Breite skaliert, damit auf schmalen Bildschirmen
+ *  breite Wortmarken nicht überlappen. */
+function sizeRangeFor(count: number, poolWidth: number) {
+  const tierMax = count <= 4 ? 64 : count <= 8 ? 48 : count <= 14 ? 36 : 26;
+  const tierMin = Math.max(16, Math.round(tierMax * 0.55));
+  const widthScale = Math.max(0.5, Math.min(1, poolWidth / 700));
+  return {
+    min: Math.round(tierMin * widthScale),
+    max: Math.round(tierMax * widthScale),
+  };
+}
+
+function randRange(min: number, max: number) {
+  return min + Math.random() * (max - min);
+}
+
+/** Platziert jeden Körper an einer zufälligen Stelle ohne Überlappung, wo
+ *  möglich — komplett frei, kein Raster. Rest löst die Physik. */
+function placeInitial(bodies: Body[], width: number, height: number) {
+  bodies.forEach((body, i) => {
+    let placed = false;
+    for (let attempt = 0; attempt < 40 && !placed; attempt++) {
+      const x = randRange(
+        body.halfW + 8,
+        Math.max(body.halfW + 8, width - body.halfW - 8),
+      );
+      const y = randRange(
+        body.halfH + 8,
+        Math.max(body.halfH + 8, height - body.halfH - 8),
+      );
+      const overlaps = bodies.slice(0, i).some((other) => {
+        const minDist =
+          Math.max(body.halfW, body.halfH) +
+          Math.max(other.halfW, other.halfH) +
+          MIN_GAP;
+        return Math.hypot(x - other.x, y - other.y) < minDist;
+      });
+      if (!overlaps) {
+        body.x = x;
+        body.y = y;
+        placed = true;
+      }
+    }
+    if (!placed) {
+      body.x = randRange(
+        body.halfW + 8,
+        Math.max(body.halfW + 8, width - body.halfW - 8),
+      );
+      body.y = randRange(
+        body.halfH + 8,
+        Math.max(body.halfH + 8, height - body.halfH - 8),
+      );
+    }
   });
 }
 
 /**
- * Kunden-Logos treiben in einem ruhigen, begrenzten "Pool": leichte
- * Eigenbewegung (Wander), sanfte gegenseitige Abstoßung, weiche Abstoßung
- * vom Cursor, weiche Rückführung an den Rändern. Kein Canvas, keine
- * externe Physik-Bibliothek — jedes Logo bleibt ein echtes <img> mit
- * Alt-Text, nur die Position wird per rAF direkt auf das DOM-Element
- * geschrieben (kein React-Re-Render pro Frame).
+ * Kunden-Logos schwirren komplett frei durch eine begrenzte Fläche, wie
+ * schwerelos: leichte Eigenbewegung (Wander), sanfte gegenseitige
+ * Abstoßung beim Berühren, weiche Abstoßung vom Cursor, weiche
+ * Rückführung an den Rändern — keine feste Position, kein Raster. Jedes
+ * Logo hat seine eigene, zufällige Größe. Kein Canvas, keine externe
+ * Physik-Bibliothek — jedes Logo bleibt ein echtes <img> mit Alt-Text, nur
+ * die Position wird per rAF direkt auf das DOM-Element geschrieben (kein
+ * React-Re-Render pro Frame).
  *
  * Bei prefers-reduced-motion bleibt es bei der ruhenden Flex-Wrap-Anordnung,
  * die auch als Server-gerendertes Ausgangslayout dient (siehe unten) — so
  * gibt es nie eine Hydration-Abweichung: die Positionierung passiert
  * ausschließlich imperativ nach dem Mount, nie beim Rendern.
  */
-export function LogoCloud({
-  label,
-  logos,
-  background,
-  className,
-}: LogoCloudProps) {
+export function LogoCloud({ logos, background, className }: LogoCloudProps) {
   const reduceMotion = useReducedMotion();
   const poolRef = useRef<HTMLUListElement>(null);
   const itemRefs = useRef<(HTMLLIElement | null)[]>([]);
+  const imgRefs = useRef<(HTMLImageElement | null)[]>([]);
   const bodiesRef = useRef<Body[]>([]);
   const pointerRef = useRef({ x: 0, y: 0, active: false });
 
@@ -109,33 +129,42 @@ export function LogoCloud({
 
     let width = pool.clientWidth;
     let height = pool.clientHeight;
-    let homes = computeHomePositions(logos.length, width, height);
 
-    const bodies: Body[] = logos.map((_, i) => ({
-      x: homes[i].x,
-      y: homes[i].y,
+    const bodies: Body[] = logos.map(() => ({
+      x: width / 2,
+      y: height / 2,
       vx: 0,
       vy: 0,
-      homeX: homes[i].x,
-      homeY: homes[i].y,
+      sizeFraction: Math.random(),
       wanderAngle: Math.random() * Math.PI * 2,
       halfW: 40,
       halfH: 14,
     }));
     bodiesRef.current = bodies;
 
-    // Echte Größe je Logo übernehmen (Bilder haben beliebiges
-    // Seitenverhältnis), dann erst aus dem normalen Fluss lösen. Start nah
-    // am Zuhause-Punkt mit etwas Streuung — die Home-Kraft und die
-    // gegenseitige Abstoßung übernehmen den Rest.
+    function applySizes(poolWidth: number) {
+      const range = sizeRangeFor(bodies.length, poolWidth);
+      bodies.forEach((body, i) => {
+        const img = imgRefs.current[i];
+        if (!img) return;
+        const h = Math.round(
+          range.min + body.sizeFraction * (range.max - range.min),
+        );
+        img.style.height = `${h}px`;
+      });
+    }
+
+    // Größe zuerst setzen (jedes Logo zufällig, aber im aktuellen Rahmen),
+    // dann erst die echte gerenderte Größe messen — Bilder haben beliebiges
+    // Seitenverhältnis, die Breite ergibt sich erst daraus.
+    applySizes(width);
     itemRefs.current.forEach((el, i) => {
       if (!el) return;
       const rect = el.getBoundingClientRect();
       bodies[i].halfW = rect.width / 2;
       bodies[i].halfH = rect.height / 2;
-      bodies[i].x += (Math.random() - 0.5) * bodies[i].halfW;
-      bodies[i].y += (Math.random() - 0.5) * bodies[i].halfH;
     });
+    placeInitial(bodies, width, height);
     itemRefs.current.forEach((el, i) => {
       if (!el) return;
       const b = bodies[i];
@@ -150,24 +179,18 @@ export function LogoCloud({
       if (!entry) return;
       const newWidth = entry.contentRect.width;
       const newHeight = entry.contentRect.height;
-      // Zuhause-Punkte für die neue Fläche neu verteilen — die Home-Kraft
-      // zieht die Logos dorthin, kein harter Sprung. Nur die Position selbst
-      // wird direkt in die neue Fläche geklemmt, damit bei einer plötzlichen
-      // Verkleinerung nichts sichtbar außerhalb steht.
-      homes = computeHomePositions(bodies.length, newWidth, newHeight);
+      // Größen an die neue Breite anpassen (jedes Logo behält seinen
+      // zufälligen Anteil im Bereich), dann die neu gemessene Größe
+      // übernehmen und die Position nur in die neue Fläche hineinklemmen —
+      // komplett frei bleibt frei, nichts wird neu einsortiert.
+      applySizes(newWidth);
       bodies.forEach((b, i) => {
-        // Ein Resize kann eine Breakpoint-Grenze überschreiten, an der sich
-        // die Logo-Höhe per CSS ändert (logoHeightClassFor) — die
-        // Kollisionsgröße also neu vom echten DOM-Element übernehmen, sonst
-        // rechnet die Physik mit der alten Größe weiter.
         const el = itemRefs.current[i];
         if (el) {
           const rect = el.getBoundingClientRect();
           b.halfW = rect.width / 2;
           b.halfH = rect.height / 2;
         }
-        b.homeX = homes[i].x;
-        b.homeY = homes[i].y;
         b.x = Math.min(
           Math.max(b.x, b.halfW),
           Math.max(b.halfW, newWidth - b.halfW),
@@ -213,20 +236,12 @@ export function LogoCloud({
 
       // Phase 1: alle Kräfte als reine Beschleunigung (px/s²) einsammeln —
       // noch ohne dt zu multiplizieren. Erst danach, in Phase 2, fließt dt
-      // genau einmal in die Geschwindigkeit ein. Vorher steckte dt versehentlich
-      // in einzelnen Kraftbeiträgen UND in der Integration, wodurch z. B. die
-      // Cursor-Kraft real um den Faktor dt zu schwach ankam.
+      // genau einmal in die Geschwindigkeit ein.
       for (let i = 0; i < bodies.length; i++) {
         const b = bodies[i];
         b.wanderAngle += (Math.random() - 0.5) * WANDER_JITTER * dt;
         accelX[i] = Math.cos(b.wanderAngle) * IDLE_ACCEL;
         accelY[i] = Math.sin(b.wanderAngle) * IDLE_ACCEL;
-
-        // Sanfter Zug zum eigenen Rasterplatz — sorgt dafür, dass die Logos
-        // dauerhaft die ganze Fläche einnehmen statt sich in einer Ecke zu
-        // sammeln, ohne die organische Bewegung lokal zu dominieren.
-        accelX[i] += (b.homeX - b.x) * HOME_STRENGTH;
-        accelY[i] += (b.homeY - b.y) * HOME_STRENGTH;
 
         if (pointer.active) {
           const dx = b.x - pointer.x;
@@ -261,7 +276,9 @@ export function LogoCloud({
 
       // Gegenseitige Abstoßung — jedes Paar nur einmal berechnet, aber
       // symmetrisch (Newton'sches Gegenkraft-Paar) auf beide Akkumulatoren
-      // angewendet.
+      // angewendet. Das ist die einzige Kraft, die Logos zueinander in
+      // Beziehung setzt — sie reagieren aufeinander, sobald sie sich
+      // streifen, sonst bleibt jedes für sich frei unterwegs.
       for (let i = 0; i < bodies.length; i++) {
         for (let j = i + 1; j < bodies.length; j++) {
           const a = bodies[i];
@@ -332,23 +349,17 @@ export function LogoCloud({
       className={cn("py-12 sm:py-16 lg:py-16", className)}
     >
       <Container>
-        {label && (
-          <p className="text-center text-sm text-muted-foreground">{label}</p>
-        )}
         {/*
           Ausgangslayout ist ein ganz normales Flex-Wrap — das ist zugleich
           das Server-gerenderte Markup, das reduced-motion-Ergebnis und der
           kurze Moment vor der Hydration. Erst der Effekt oben löst jedes
           Logo per position:absolute aus dem Fluss, nie das Rendern selbst,
           damit es keine Hydration-Abweichung geben kann. Die feste Höhe
-          begrenzt den "Pool", in dem sich die Logos bewegen.
+          begrenzt die Fläche, in der sich die Logos frei bewegen.
         */}
         <ul
           ref={poolRef}
-          className={cn(
-            "relative flex h-[320px] w-full flex-wrap items-center justify-center gap-x-10 gap-y-8 overflow-hidden sm:h-[420px] sm:gap-x-14 lg:h-[520px]",
-            label && "mt-8",
-          )}
+          className="relative flex h-[320px] w-full flex-wrap items-center justify-center gap-x-10 gap-y-8 overflow-hidden sm:h-[420px] sm:gap-x-14 lg:h-[520px]"
         >
           {logos.map((logo, i) => (
             <li
@@ -361,22 +372,21 @@ export function LogoCloud({
                   Dateien kommen roh aus public/images/clients/ (der Kunde
                   legt sie selbst ab), ohne bekannte Breite/Höhe im Voraus.
                   grayscale+invert vereinheitlicht jedes Logo unabhängig von
-                  seiner Originalfarbe zu Weiß, wie in der Referenz. Die Höhe
-                  richtet sich nach der Anzahl UND responsiv nach der
-                  Breakpoint-Breite (logoHeightClassFor) — sonst würden
-                  breite Wortmarken bei wenig Platz pro Spalte auf dem Handy
-                  überlappen. */}
+                  seiner Originalfarbe zu Weiß. Die Höhe (h-9 hier) ist nur
+                  der Vor-Hydration-/reduced-motion-Fallback — sobald die
+                  Physik läuft, überschreibt sie jedes Logo mit seiner
+                  eigenen, zufälligen Größe (sizeRangeFor). */}
               {/* eslint-disable-next-line @next/next/no-img-element --
                   next/image braucht Breite/Höhe im Voraus; auf dieser
                   statisch exportierten Seite (images.unoptimized: true)
                   bringt es hier ohnehin keine echte Optimierung. */}
               <img
+                ref={(el) => {
+                  imgRefs.current[i] = el;
+                }}
                 src={typeof logo.src === "string" ? logo.src : logo.src.src}
                 alt={logo.alt}
-                className={cn(
-                  "w-auto brightness-0 grayscale invert select-none",
-                  logoHeightClassFor(logos.length),
-                )}
+                className="h-9 w-auto brightness-0 grayscale invert select-none"
                 draggable={false}
                 onLoad={(e) => {
                   const body = bodiesRef.current[i];
