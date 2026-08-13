@@ -25,6 +25,7 @@ export interface NavigationConfig {
 
 const mainNav: NavItem[] = [
   { label: "Leistungen", href: "/leistungen" },
+  { label: "Kunden", href: "/kunden" },
   { label: "Über uns", href: "/ueber-uns" },
   { label: "Kontakt", href: "/kontakt" },
 ];
