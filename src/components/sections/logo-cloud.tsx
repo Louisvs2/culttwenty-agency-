@@ -46,9 +46,9 @@ interface Body {
  *  an die tatsächliche Breite skaliert, damit auf schmalen Bildschirmen
  *  breite Wortmarken nicht überlappen. */
 function sizeRangeFor(count: number, poolWidth: number) {
-  const tierMax = count <= 4 ? 76 : count <= 8 ? 58 : count <= 14 ? 40 : 28;
-  const tierMin = Math.max(20, Math.round(tierMax * 0.6));
-  const widthScale = Math.max(0.5, Math.min(1, poolWidth / 700));
+  const tierMax = count <= 4 ? 100 : count <= 8 ? 78 : count <= 14 ? 52 : 34;
+  const tierMin = Math.max(24, Math.round(tierMax * 0.65));
+  const widthScale = Math.max(0.32, Math.min(1, poolWidth / 950));
   return {
     min: Math.round(tierMin * widthScale),
     max: Math.round(tierMax * widthScale),
@@ -58,10 +58,10 @@ function sizeRangeFor(count: number, poolWidth: number) {
 /** Wenige Logos in der vollen, großen Fläche wirken verloren — die
  *  Poolhöhe wächst deshalb mit der Anzahl statt immer maximal zu sein. */
 function poolHeightClassFor(count: number) {
-  if (count <= 4) return "h-[200px] sm:h-[240px] lg:h-[280px]";
-  if (count <= 8) return "h-[260px] sm:h-[320px] lg:h-[380px]";
-  if (count <= 14) return "h-[300px] sm:h-[380px] lg:h-[460px]";
-  return "h-[320px] sm:h-[420px] lg:h-[520px]";
+  if (count <= 4) return "h-[240px] sm:h-[300px] lg:h-[360px]";
+  if (count <= 8) return "h-[300px] sm:h-[380px] lg:h-[460px]";
+  if (count <= 14) return "h-[340px] sm:h-[420px] lg:h-[500px]";
+  return "h-[360px] sm:h-[460px] lg:h-[560px]";
 }
 
 function randRange(min: number, max: number) {
