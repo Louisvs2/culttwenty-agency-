@@ -46,13 +46,22 @@ interface Body {
  *  an die tatsächliche Breite skaliert, damit auf schmalen Bildschirmen
  *  breite Wortmarken nicht überlappen. */
 function sizeRangeFor(count: number, poolWidth: number) {
-  const tierMax = count <= 4 ? 64 : count <= 8 ? 48 : count <= 14 ? 36 : 26;
-  const tierMin = Math.max(16, Math.round(tierMax * 0.55));
+  const tierMax = count <= 4 ? 76 : count <= 8 ? 58 : count <= 14 ? 40 : 28;
+  const tierMin = Math.max(20, Math.round(tierMax * 0.6));
   const widthScale = Math.max(0.5, Math.min(1, poolWidth / 700));
   return {
     min: Math.round(tierMin * widthScale),
     max: Math.round(tierMax * widthScale),
   };
+}
+
+/** Wenige Logos in der vollen, großen Fläche wirken verloren — die
+ *  Poolhöhe wächst deshalb mit der Anzahl statt immer maximal zu sein. */
+function poolHeightClassFor(count: number) {
+  if (count <= 4) return "h-[200px] sm:h-[240px] lg:h-[280px]";
+  if (count <= 8) return "h-[260px] sm:h-[320px] lg:h-[380px]";
+  if (count <= 14) return "h-[300px] sm:h-[380px] lg:h-[460px]";
+  return "h-[320px] sm:h-[420px] lg:h-[520px]";
 }
 
 function randRange(min: number, max: number) {
@@ -359,7 +368,10 @@ export function LogoCloud({ logos, background, className }: LogoCloudProps) {
         */}
         <ul
           ref={poolRef}
-          className="relative flex h-[320px] w-full flex-wrap items-center justify-center gap-x-10 gap-y-8 overflow-hidden sm:h-[420px] sm:gap-x-14 lg:h-[520px]"
+          className={cn(
+            "relative flex w-full flex-wrap items-center justify-center gap-x-10 gap-y-8 overflow-hidden sm:gap-x-14",
+            poolHeightClassFor(logos.length),
+          )}
         >
           {logos.map((logo, i) => (
             <li
