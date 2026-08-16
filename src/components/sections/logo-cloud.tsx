@@ -19,17 +19,6 @@ interface LogoCloudProps {
   className?: string;
 }
 
-/** Größenbereich für die Logo-Höhe: größer bei wenigen Logos, kompakter bei
- *  vielen, und zusätzlich an die tatsächliche Breite skaliert — sonst würde
- *  z. B. eine breite Wortmarke auf dem Handy fast die ganze Fläche
- *  einnehmen und alles andere verdecken. */
-function logoHeightRangeFor(count: number, poolWidth: number) {
-  const tierMax = count <= 4 ? 72 : count <= 8 ? 56 : count <= 14 ? 40 : 28;
-  const widthScale = Math.max(0.4, Math.min(1, poolWidth / 700));
-  const max = Math.round(tierMax * widthScale);
-  return { min: Math.round(max * 0.6), max };
-}
-
 function poolHeightClassFor(count: number) {
   if (count <= 4) return "h-[220px] sm:h-[280px] lg:h-[340px]";
   if (count <= 8) return "h-[280px] sm:h-[360px] lg:h-[440px]";
@@ -38,71 +27,134 @@ function poolHeightClassFor(count: number) {
 }
 
 /**
- * Kunden-Logos an zufälligen, aber festen Positionen verstreut — wie die
- * Referenz (nimmersatt.fyi): keine Physik, keine Kollisionsvermeidung
- * (Überlappen ist im Original ausdrücklich zu sehen), keine
- * Cursor-Interaktion. Jedes Logo zieht beim Erscheinen zeitversetzt in
- * seine Position (FadeInStagger/FadeIn, dieselbe Bewegung wie überall sonst
- * im Template) und wackelt danach dauerhaft ganz leicht (eigene, wenige
- * Pixel kleine CSS-Keyframe-Animation, pro Logo mit eigenem Timing, damit
- * es nicht synchron und damit mechanisch wirkt).
+ * Kunden-Logos an festen, zufällig wirkenden Positionen — angelehnt an die
+ * Referenz (nimmersatt.fyi), aber mit einer eigenen, bewussten Abweichung:
+ * die Fläche wird in so viele Zellen unterteilt wie Logos vorhanden sind
+ * (Spaltenzahl passend zum Seitenverhältnis der Fläche), jedes Logo bekommt
+ * genau eine Zelle und wird darin so groß wie möglich eingepasst — das
+ * garantiert, dass nichts überlappt, alle Logos ähnlich groß wirken (statt
+ * nach Zufall mal winzig, mal riesig) und die Fläche wirklich vollständig
+ * ausgefüllt ist, egal wie viele Logos es gerade sind. Ein kleiner
+ * Zufalls-Versatz innerhalb der Zelle sorgt trotzdem für den organischen,
+ * nicht sichtbar gerasterten Eindruck.
+ *
+ * Jedes Logo zieht beim Erscheinen zeitversetzt in seine Position
+ * (FadeInStagger/FadeIn) und wackelt danach dauerhaft ganz leicht (eigene
+ * CSS-Keyframe-Animation, pro Logo mit eigenem Timing).
  *
  * Bei prefers-reduced-motion bleibt es bei der ruhenden Flex-Wrap-Anordnung
  * ohne Wackeln — die auch als Server-gerendertes Ausgangslayout dient, damit
  * es nie eine Hydration-Abweichung gibt: Position UND Größe werden
- * ausschließlich imperativ nach dem Mount gesetzt, nie beim Rendern (sonst
- * würde jede erneute Render-Passage die Größe neu auswürfeln).
+ * ausschließlich imperativ nach dem Mount gesetzt, nie beim Rendern.
  */
 export function LogoCloud({ logos, background, className }: LogoCloudProps) {
   const reduceMotion = useReducedMotion();
   const poolRef = useRef<HTMLUListElement>(null);
   const itemRefs = useRef<(HTMLLIElement | null)[]>([]);
   const imgRefs = useRef<(HTMLImageElement | null)[]>([]);
-  const sizeFractionsRef = useRef<number[]>([]);
+  const cellOrderRef = useRef<number[]>([]);
 
   useEffect(() => {
     if (reduceMotion || logos.length === 0) return;
     const pool = poolRef.current;
     if (!pool) return;
+    let cancelled = false;
 
-    if (sizeFractionsRef.current.length !== logos.length) {
-      sizeFractionsRef.current = logos.map(() => Math.random());
+    if (cellOrderRef.current.length !== logos.length) {
+      // Welches Logo in welche Zelle kommt, wird einmal zufällig gemischt —
+      // sonst stünde Logo 1 aus content/services.ts immer oben links.
+      const order = logos.map((_, i) => i);
+      for (let i = order.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [order[i], order[j]] = [order[j], order[i]];
+      }
+      cellOrderRef.current = order;
     }
 
-    function scatter() {
-      const width = pool!.clientWidth;
-      const height = pool!.clientHeight;
-      const range = logoHeightRangeFor(logos.length, width);
+    async function layout() {
+      // Erst sicherstellen, dass jedes Bild sein echtes Seitenverhältnis
+      // kennt (naturalWidth/Height) — sonst könnte ein breites Logo eine
+      // schmale Zelle sprengen und doch überlappen.
+      await Promise.all(
+        imgRefs.current.map((img) => img?.decode().catch(() => {})),
+      );
+      if (cancelled || !pool) return;
+
+      const width = pool.clientWidth;
+      const height = pool.clientHeight;
+      const count = logos.length;
+      const aspect = width / Math.max(height, 1);
+      const cols = Math.max(1, Math.round(Math.sqrt(count * aspect)));
+      const rows = Math.max(1, Math.ceil(count / cols));
+      const cellW = width / cols;
+      const cellH = height / rows;
+      const FILL = 0.78; // wie viel der Zelle die Basishöhe maximal einnimmt
+
+      // Erst für jedes Logo ermitteln, wie hoch es maximal sein dürfte, ohne
+      // seine eigene Zelle zu sprengen — bei einer breiten Wortmarke in
+      // einer querformatigen Zelle limitiert das die Breite, nicht die Höhe.
+      // Die kleinste dieser Grenzen wird dann als EINE gemeinsame Höhe auf
+      // alle Logos angewendet: alle gleich hoch (wie in einer echten
+      // Logowand), Breite bleibt je nach Seitenverhältnis natürlich
+      // unterschiedlich. Ohne diesen zweiten Durchgang würde jedes Logo
+      // unabhängig maximiert — ein breites Logo wie ein Wortmarken-Schriftzug
+      // schrumpft dann auf der Höhe viel stärker als ein quadratisches Icon,
+      // und die Größen wirken zufällig statt einheitlich.
+      let baseHeight = Infinity;
+      const ratios = imgRefs.current.map((img) => {
+        const naturalW = img?.naturalWidth || 100;
+        const naturalH = img?.naturalHeight || 40;
+        const ratio = naturalW / Math.max(naturalH, 1);
+        const maxByHeight = cellH * FILL;
+        const maxByWidth = (cellW * FILL) / ratio;
+        baseHeight = Math.min(baseHeight, maxByHeight, maxByWidth);
+        return ratio;
+      });
+      if (!Number.isFinite(baseHeight)) baseHeight = cellH * FILL;
 
       imgRefs.current.forEach((img, i) => {
-        if (!img) return;
-        const fraction = sizeFractionsRef.current[i];
-        img.style.height = `${Math.round(range.min + fraction * (range.max - range.min))}px`;
-      });
+        const el = itemRefs.current[i];
+        if (!img || !el) return;
 
-      itemRefs.current.forEach((el) => {
-        if (!el) return;
-        const rect = el.getBoundingClientRect();
-        const x = randRange(0, Math.max(0, width - rect.width));
-        const y = randRange(0, Math.max(0, height - rect.height));
+        const cell = cellOrderRef.current[i];
+        const col = cell % cols;
+        const row = Math.floor(cell / cols);
+
+        // Leichter Jitter um die gemeinsame Höhe (±10 %), nicht mehr vom
+        // Seitenverhältnis abhängig — sonst wirkt die Wand zu mechanisch,
+        // aber keins sticht mehr als winzig oder riesig heraus.
+        const finalHeight = baseHeight * randRange(0.9, 1.0);
+        const finalWidth = finalHeight * ratios[i];
+        img.style.height = `${finalHeight}px`;
+
+        const cellX0 = col * cellW;
+        const cellY0 = row * cellH;
+        const freeX = Math.max(0, cellW - finalWidth);
+        const freeY = Math.max(0, cellH - finalHeight);
+        const x = cellX0 + freeX / 2 + (Math.random() - 0.5) * freeX * 0.6;
+        const y = cellY0 + freeY / 2 + (Math.random() - 0.5) * freeY * 0.6;
+
         el.style.position = "absolute";
         el.style.left = `${x}px`;
         el.style.top = `${y}px`;
         // Jedes Logo bekommt sein eigenes Wackel-Timing, sonst wackeln alle
-        // im Gleichschritt und es wirkt wie ein einziges bewegtes Objekt
-        // statt vieler unabhängiger.
+        // im Gleichschritt und es wirkt wie ein einziges bewegtes Objekt.
         el.style.animationDuration = `${randRange(3.5, 6)}s`;
         el.style.animationDelay = `-${randRange(0, 6)}s`;
       });
     }
 
-    scatter();
-    // Bei Größenänderung neu verstreuen — bei festen, nicht interaktiven
-    // Positionen gibt es keinen Grund, alte Positionen über Breakpoints
-    // hinweg zu erhalten.
-    const resizeObserver = new ResizeObserver(scatter);
+    layout();
+    // Bei Größenänderung neu einpassen, damit die Zellaufteilung zur neuen
+    // Fläche passt (z. B. Breakpoint-Wechsel ändert die Spaltenzahl).
+    const resizeObserver = new ResizeObserver(() => {
+      layout();
+    });
     resizeObserver.observe(pool);
-    return () => resizeObserver.disconnect();
+    return () => {
+      cancelled = true;
+      resizeObserver.disconnect();
+    };
   }, [reduceMotion, logos]);
 
   return (
