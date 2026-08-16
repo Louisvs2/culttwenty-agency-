@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useReducedMotion } from "motion/react";
 
 import { Container } from "@/components/layout/container";
@@ -19,165 +19,170 @@ interface LogoCloudProps {
   className?: string;
 }
 
-function poolHeightClassFor(count: number) {
-  if (count <= 4) return "h-[220px] sm:h-[280px] lg:h-[340px]";
-  if (count <= 8) return "h-[280px] sm:h-[360px] lg:h-[440px]";
-  if (count <= 14) return "h-[320px] sm:h-[400px] lg:h-[480px]";
-  return "h-[360px] sm:h-[460px] lg:h-[560px]";
+/**
+ * Je weniger Logos vorhanden sind, desto größer werden sie dargestellt —
+ * dadurch füllt sich die Fläche automatisch, ganz ohne dass eine feste Höhe
+ * erzwungen und Logos hineingepresst werden müssten (das war der Bug in der
+ * vorherigen Zellen-Fassung: eine breite Wortmarke wie Sony hat dort die
+ * gemeinsame Höhe für ALLE Logos nach unten gezogen).
+ */
+function logoHeightClassFor(count: number) {
+  if (count <= 6) return "h-16 sm:h-20 lg:h-28";
+  if (count <= 10) return "h-14 sm:h-16 lg:h-20";
+  if (count <= 16) return "h-11 sm:h-14 lg:h-16";
+  return "h-9 sm:h-11 lg:h-12";
 }
 
 /**
- * Kunden-Logos an festen, zufällig wirkenden Positionen — angelehnt an die
- * Referenz (nimmersatt.fyi), aber mit einer eigenen, bewussten Abweichung:
- * die Fläche wird in so viele Zellen unterteilt wie Logos vorhanden sind
- * (Spaltenzahl passend zum Seitenverhältnis der Fläche), jedes Logo bekommt
- * genau eine Zelle und wird darin so groß wie möglich eingepasst — das
- * garantiert, dass nichts überlappt, alle Logos ähnlich groß wirken (statt
- * nach Zufall mal winzig, mal riesig) und die Fläche wirklich vollständig
- * ausgefüllt ist, egal wie viele Logos es gerade sind. Ein kleiner
- * Zufalls-Versatz innerhalb der Zelle sorgt trotzdem für den organischen,
- * nicht sichtbar gerasterten Eindruck.
+ * Beschneidet den transparenten Rand einer PNG-Datei auf das sichtbare
+ * Zeichen (Canvas + Alphakanal-Scan). Ohne das würde ein Logo mit viel
+ * eingebautem Leerraum (z. B. New Era) bei gleicher Bild-Box-Höhe kleiner
+ * wirken als ein eng zugeschnittenes Logo (Sony) — obwohl beide dieselbe
+ * CSS-Höhe haben. Gibt bei Fehlern oder wenn nichts zu beschneiden ist
+ * `null` zurück, dann bleibt einfach die Originaldatei stehen.
+ */
+async function trimTransparentPadding(src: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        const { naturalWidth: w, naturalHeight: h } = img;
+        if (!w || !h) {
+          resolve(null);
+          return;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(null);
+          return;
+        }
+        ctx.drawImage(img, 0, 0);
+        const { data } = ctx.getImageData(0, 0, w, h);
+
+        let minX = w;
+        let minY = h;
+        let maxX = -1;
+        let maxY = -1;
+        const ALPHA_THRESHOLD = 10;
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const alpha = data[(y * w + x) * 4 + 3];
+            if (alpha > ALPHA_THRESHOLD) {
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            }
+          }
+        }
+
+        if (maxX < minX || maxY < minY) {
+          resolve(null);
+          return;
+        }
+        const cropW = maxX - minX + 1;
+        const cropH = maxY - minY + 1;
+        if (cropW === w && cropH === h) {
+          resolve(null);
+          return;
+        }
+
+        const cropped = document.createElement("canvas");
+        cropped.width = cropW;
+        cropped.height = cropH;
+        const croppedCtx = cropped.getContext("2d");
+        if (!croppedCtx) {
+          resolve(null);
+          return;
+        }
+        croppedCtx.drawImage(
+          canvas,
+          minX,
+          minY,
+          cropW,
+          cropH,
+          0,
+          0,
+          cropW,
+          cropH,
+        );
+        resolve(cropped.toDataURL("image/png"));
+      } catch {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+/**
+ * Kunden-Logowand: einheitliche Höhe pro Logo (Breite ergibt sich aus dem
+ * jeweiligen Seitenverhältnis — wie bei jeder echten Logowand), angeordnet in
+ * einem normalen Flex-Wrap. Das garantiert von selbst, dass sich nichts
+ * überlappt (Dokumentenfluss statt Positionierung per Hand) und dass die
+ * Fläche durch den Zeilenumbruch immer zur jeweiligen Logo-Anzahl passt.
  *
  * Jedes Logo zieht beim Erscheinen zeitversetzt in seine Position
  * (FadeInStagger/FadeIn) und wackelt danach dauerhaft ganz leicht (eigene
  * CSS-Keyframe-Animation, pro Logo mit eigenem Timing).
  *
- * Bei prefers-reduced-motion bleibt es bei der ruhenden Flex-Wrap-Anordnung
- * ohne Wackeln — die auch als Server-gerendertes Ausgangslayout dient, damit
- * es nie eine Hydration-Abweichung gibt: Position UND Größe werden
- * ausschließlich imperativ nach dem Mount gesetzt, nie beim Rendern.
+ * Die Ausgangsdatei jedes Logos wird nach dem Mount client-seitig um ihren
+ * transparenten Rand beschnitten (Canvas), damit unterschiedlich viel
+ * Leerraum in den Quelldateien nicht dazu führt, dass manche Logos trotz
+ * gleicher Boxhöhe kleiner wirken als andere.
+ *
+ * Bei prefers-reduced-motion bleibt es beim ruhigen Flex-Wrap ohne Wackeln —
+ * das ist zugleich das Server-gerenderte Ausgangslayout, damit es nie eine
+ * Hydration-Abweichung gibt: der beschnittene Bild-Src wird ausschließlich
+ * imperativ nach dem Mount gesetzt, nie beim Rendern.
  */
 export function LogoCloud({ logos, background, className }: LogoCloudProps) {
   const reduceMotion = useReducedMotion();
-  const poolRef = useRef<HTMLUListElement>(null);
   const itemRefs = useRef<(HTMLLIElement | null)[]>([]);
-  const imgRefs = useRef<(HTMLImageElement | null)[]>([]);
-  const cellOrderRef = useRef<number[]>([]);
+  const [trimmedSrcs, setTrimmedSrcs] = useState<(string | null)[]>(() =>
+    logos.map(() => null),
+  );
 
   useEffect(() => {
-    if (reduceMotion || logos.length === 0) return;
-    const pool = poolRef.current;
-    if (!pool) return;
     let cancelled = false;
-
-    if (cellOrderRef.current.length !== logos.length) {
-      // Welches Logo in welche Zelle kommt, wird einmal zufällig gemischt —
-      // sonst stünde Logo 1 aus content/services.ts immer oben links.
-      const order = logos.map((_, i) => i);
-      for (let i = order.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [order[i], order[j]] = [order[j], order[i]];
-      }
-      cellOrderRef.current = order;
-    }
-
-    async function layout() {
-      // Erst sicherstellen, dass jedes Bild sein echtes Seitenverhältnis
-      // kennt (naturalWidth/Height) — sonst könnte ein breites Logo eine
-      // schmale Zelle sprengen und doch überlappen.
-      await Promise.all(
-        imgRefs.current.map((img) => img?.decode().catch(() => {})),
-      );
-      if (cancelled || !pool) return;
-
-      const width = pool.clientWidth;
-      const height = pool.clientHeight;
-      const count = logos.length;
-      const aspect = width / Math.max(height, 1);
-      const cols = Math.max(1, Math.round(Math.sqrt(count * aspect)));
-      const rows = Math.max(1, Math.ceil(count / cols));
-      const cellW = width / cols;
-      const cellH = height / rows;
-      const FILL = 0.78; // wie viel der Zelle die Basishöhe maximal einnimmt
-
-      // Erst für jedes Logo ermitteln, wie hoch es maximal sein dürfte, ohne
-      // seine eigene Zelle zu sprengen — bei einer breiten Wortmarke in
-      // einer querformatigen Zelle limitiert das die Breite, nicht die Höhe.
-      // Die kleinste dieser Grenzen wird dann als EINE gemeinsame Höhe auf
-      // alle Logos angewendet: alle gleich hoch (wie in einer echten
-      // Logowand), Breite bleibt je nach Seitenverhältnis natürlich
-      // unterschiedlich. Ohne diesen zweiten Durchgang würde jedes Logo
-      // unabhängig maximiert — ein breites Logo wie ein Wortmarken-Schriftzug
-      // schrumpft dann auf der Höhe viel stärker als ein quadratisches Icon,
-      // und die Größen wirken zufällig statt einheitlich.
-      let baseHeight = Infinity;
-      const ratios = imgRefs.current.map((img) => {
-        const naturalW = img?.naturalWidth || 100;
-        const naturalH = img?.naturalHeight || 40;
-        const ratio = naturalW / Math.max(naturalH, 1);
-        const maxByHeight = cellH * FILL;
-        const maxByWidth = (cellW * FILL) / ratio;
-        baseHeight = Math.min(baseHeight, maxByHeight, maxByWidth);
-        return ratio;
-      });
-      if (!Number.isFinite(baseHeight)) baseHeight = cellH * FILL;
-
-      imgRefs.current.forEach((img, i) => {
-        const el = itemRefs.current[i];
-        if (!img || !el) return;
-
-        const cell = cellOrderRef.current[i];
-        const col = cell % cols;
-        const row = Math.floor(cell / cols);
-
-        // Leichter Jitter um die gemeinsame Höhe (±10 %), nicht mehr vom
-        // Seitenverhältnis abhängig — sonst wirkt die Wand zu mechanisch,
-        // aber keins sticht mehr als winzig oder riesig heraus.
-        const finalHeight = baseHeight * randRange(0.9, 1.0);
-        const finalWidth = finalHeight * ratios[i];
-        img.style.height = `${finalHeight}px`;
-
-        const cellX0 = col * cellW;
-        const cellY0 = row * cellH;
-        const freeX = Math.max(0, cellW - finalWidth);
-        const freeY = Math.max(0, cellH - finalHeight);
-        const x = cellX0 + freeX / 2 + (Math.random() - 0.5) * freeX * 0.6;
-        const y = cellY0 + freeY / 2 + (Math.random() - 0.5) * freeY * 0.6;
-
-        el.style.position = "absolute";
-        el.style.left = `${x}px`;
-        el.style.top = `${y}px`;
-        // Jedes Logo bekommt sein eigenes Wackel-Timing, sonst wackeln alle
-        // im Gleichschritt und es wirkt wie ein einziges bewegtes Objekt.
-        el.style.animationDuration = `${randRange(3.5, 6)}s`;
-        el.style.animationDelay = `-${randRange(0, 6)}s`;
-      });
-    }
-
-    layout();
-    // Bei Größenänderung neu einpassen, damit die Zellaufteilung zur neuen
-    // Fläche passt (z. B. Breakpoint-Wechsel ändert die Spaltenzahl).
-    const resizeObserver = new ResizeObserver(() => {
-      layout();
+    Promise.all(
+      logos.map((logo) =>
+        trimTransparentPadding(
+          typeof logo.src === "string" ? logo.src : logo.src.src,
+        ),
+      ),
+    ).then((results) => {
+      if (!cancelled) setTrimmedSrcs(results);
     });
-    resizeObserver.observe(pool);
     return () => {
       cancelled = true;
-      resizeObserver.disconnect();
     };
-  }, [reduceMotion, logos]);
+  }, [logos]);
+
+  useEffect(() => {
+    if (reduceMotion) return;
+    // Jedes Logo bekommt sein eigenes Wackel-Timing, sonst wackeln alle im
+    // Gleichschritt und es wirkt wie ein einziges bewegtes Objekt.
+    itemRefs.current.forEach((el) => {
+      if (!el) return;
+      el.style.animationDuration = `${randRange(3.5, 6)}s`;
+      el.style.animationDelay = `-${randRange(0, 6)}s`;
+    });
+  }, [reduceMotion, logos.length]);
 
   return (
     <Section
       background={background}
-      className={cn("py-12 sm:py-16 lg:py-16", className)}
+      className={cn("py-12 sm:py-16 lg:py-20", className)}
     >
       <Container>
         <FadeInStagger>
-          {/*
-            Ausgangslayout ist ein ganz normales Flex-Wrap — das ist zugleich
-            das Server-gerenderte Markup, das reduced-motion-Ergebnis und der
-            kurze Moment vor der Hydration. Erst der Effekt oben löst jedes
-            Logo per position:absolute aus dem Fluss, nie das Rendern selbst,
-            damit es keine Hydration-Abweichung geben kann.
-          */}
-          <ul
-            ref={poolRef}
-            className={cn(
-              "relative flex w-full flex-wrap items-center justify-center gap-x-10 gap-y-8 overflow-hidden sm:gap-x-14",
-              poolHeightClassFor(logos.length),
-            )}
-          >
+          <ul className="flex flex-wrap items-center justify-center gap-x-12 gap-y-10 sm:gap-x-16 sm:gap-y-12 lg:gap-x-20 lg:gap-y-14">
             {logos.map((logo, i) => (
               <li
                 key={logo.alt}
@@ -195,19 +200,21 @@ export function LogoCloud({ logos, background, className }: LogoCloudProps) {
                       Dateien kommen roh aus public/images/clients/ (der
                       Kunde legt sie selbst ab), ohne bekannte Breite/Höhe im
                       Voraus. grayscale+invert vereinheitlicht jedes Logo
-                      unabhängig von seiner Originalfarbe zu Weiß. h-9 ist
-                      nur der Vor-Hydration-/reduced-motion-Fallback. */}
+                      unabhängig von seiner Originalfarbe zu Weiß. */}
                   {/* eslint-disable-next-line @next/next/no-img-element --
                       next/image braucht Breite/Höhe im Voraus; auf dieser
                       statisch exportierten Seite (images.unoptimized: true)
                       bringt es hier ohnehin keine echte Optimierung. */}
                   <img
-                    ref={(el) => {
-                      imgRefs.current[i] = el;
-                    }}
-                    src={typeof logo.src === "string" ? logo.src : logo.src.src}
+                    src={
+                      trimmedSrcs[i] ??
+                      (typeof logo.src === "string" ? logo.src : logo.src.src)
+                    }
                     alt={logo.alt}
-                    className="h-9 w-auto brightness-0 grayscale invert select-none"
+                    className={cn(
+                      "w-auto brightness-0 grayscale invert select-none",
+                      logoHeightClassFor(logos.length),
+                    )}
                     draggable={false}
                   />
                 </FadeIn>
