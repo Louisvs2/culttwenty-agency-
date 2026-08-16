@@ -1,7 +1,7 @@
 import { Container } from "@/components/layout/container";
 import { Section, type SectionBackground } from "@/components/layout/section";
-import { cn } from "@/lib/utils";
 import type { Logo } from "@/types/content";
+import { cn } from "@/lib/utils";
 
 interface LogoCloudProps {
   logos: Logo[];
@@ -10,29 +10,17 @@ interface LogoCloudProps {
 }
 
 /**
- * Je weniger Logos vorhanden sind, desto größer werden sie dargestellt —
- * dadurch füllt sich die Fläche automatisch, ganz ohne feste Höhe.
- */
-function logoHeightClassFor(count: number) {
-  if (count <= 6) return "h-16 sm:h-20 lg:h-28";
-  if (count <= 10) return "h-14 sm:h-16 lg:h-20";
-  if (count <= 16) return "h-11 sm:h-14 lg:h-16";
-  return "h-9 sm:h-11 lg:h-12";
-}
-
-/**
- * Kunden-Logowand: einfache Auflistung nebeneinander, einheitliche Höhe pro
- * Logo (Breite ergibt sich aus dem jeweiligen Seitenverhältnis), in normalem
- * Flex-Wrap ohne jede Animation.
+ * Kunden-Logowand: einfache Auflistung nebeneinander, klein und einheitlich
+ * groß, in normalem Flex-Wrap ohne jede Animation.
  */
 export function LogoCloud({ logos, background, className }: LogoCloudProps) {
   return (
     <Section
       background={background}
-      className={cn("py-12 sm:py-16 lg:py-20", className)}
+      className={cn("py-12 sm:py-16 lg:py-16", className)}
     >
       <Container>
-        <ul className="flex flex-wrap items-center justify-center gap-x-12 gap-y-10 sm:gap-x-16 sm:gap-y-12 lg:gap-x-20 lg:gap-y-14">
+        <ul className="flex flex-wrap items-center justify-center gap-x-10 gap-y-8 sm:gap-x-14">
           {logos.map((logo) => (
             <li key={logo.alt}>
               {/* Absichtlich ein normales <img>, kein next/image: die
@@ -47,10 +35,7 @@ export function LogoCloud({ logos, background, className }: LogoCloudProps) {
               <img
                 src={typeof logo.src === "string" ? logo.src : logo.src.src}
                 alt={logo.alt}
-                className={cn(
-                  "w-auto brightness-0 grayscale invert select-none",
-                  logoHeightClassFor(logos.length),
-                )}
+                className="h-9 w-auto brightness-0 grayscale invert select-none"
                 draggable={false}
               />
             </li>
